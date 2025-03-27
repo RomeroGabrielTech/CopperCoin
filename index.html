@@ -169,21 +169,24 @@
 
       // Ajustar el tamaño del canvas dinámicamente
       function resizeCanvas() {
-        const aspectRatio = 16 / 9;
+        const aspectRatio = 16 / 9; // Proporción del juego (ajusta según tu juego)
         let width = window.innerWidth;
         let height = window.innerHeight;
 
+        // Usar las dimensiones de Telegram si están disponibles
         if (window.Telegram && window.Telegram.WebApp) {
           width = window.Telegram.WebApp.viewportWidth;
           height = window.Telegram.WebApp.viewportHeight;
         }
 
+        // Ajustar para mantener la proporción
         if (width / height > aspectRatio) {
           width = height * aspectRatio;
         } else {
           height = width / aspectRatio;
         }
 
+        // Asegurarse de que no exceda el tamaño de la ventana
         width = Math.min(width, window.innerWidth);
         height = Math.min(height, window.innerHeight);
 
@@ -193,6 +196,7 @@
         canvas.style.height = height + 'px';
       }
 
+      // Llamar a resizeCanvas al cargar y al redimensionar
       window.addEventListener('resize', resizeCanvas);
       resizeCanvas();
 
@@ -240,49 +244,13 @@
       };
       const maxCoppercoins = maxCoppercoinsPerDay[level] || 50;
 
+      // Implementar la funcionalidad del botón Collect Coin
       function collectCoin() {
-        if (coppercoins >= maxCoppercoins) {
-          alert("Has alcanzado el máximo de coppercoins que puedes recolectar hoy. Vuelve mañana.");
-          return;
-        }
-
-        // Enviar datos al bot
-        if (window.Telegram && window.Telegram.WebApp) {
-          const data = { action: "collect_coin", amount: 1 };
-          window.Telegram.WebApp.sendData(JSON.stringify(data));
-          coppercoins += 1;
-          coppercoinCounter.textContent = `💰 Coppercoins: ${coppercoins}`;
-
-          if (coppercoins >= maxCoppercoins) {
-            miningTimer.style.display = 'block';
-            const now = new Date();
-            const nextDay = new Date(now);
-            nextDay.setHours(0, 0, 0, 0);
-            nextDay.setDate(nextDay.getDate() + 1);
-            const timeLeft = nextDay - now;
-
-            function updateTimer() {
-              const now = new Date();
-              const timeLeft = nextDay - now;
-              if (timeLeft <= 0) {
-                miningTimer.style.display = 'none';
-                return;
-              }
-              const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-              const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-              const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-              miningTimer.textContent = `⏳ Tiempo para minar: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-              setTimeout(updateTimer, 1000);
-            }
-
-            updateTimer();
-          }
-        } else {
-          alert("No se puede recolectar monedas. La API de Telegram no está disponible.");
-        }
+        coppercoins += 1; // Sumar una unidad al contador
+        coppercoinCounter.textContent = `💰 Coppercoins: ${coppercoins}`;
       }
 
-      // Mostrar temporizador si se alcanzó el máximo al cargar
+      // Mostrar temporizador si se alcanzó el máximo (aunque no lo usamos ahora)
       if (coppercoins >= maxCoppercoins) {
         miningTimer.style.display = 'block';
         const now = new Date();
@@ -333,4 +301,22 @@
 
       loadingBar.style.display = "block";
 
-      var script =
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = 100 * progress + "%";
+        }).then((unityInstance) => {
+          loadingBar.style.display = "none";
+          fullscreenButton.onclick = () => {
+            unityInstance.SetFullscreen(1);
+          };
+        }).catch((message) => {
+          alert(message);
+        });
+      };
+
+      document.body.appendChild(script);
+    </script>
+  </body>
+</html>
