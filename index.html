@@ -6,6 +6,8 @@
     <title>Unity WebGL Player | CopperCoin</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
+    <!-- Cargar el script de Telegram Web Apps -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       body, html {
         margin: 0;
@@ -15,7 +17,7 @@
         overflow: hidden;
       }
       #unity-container {
-        position: relative; /* Cambiado de absolute a relative para mejor control */
+        position: relative;
         width: 100%;
         height: 100%;
         display: flex;
@@ -26,8 +28,10 @@
       #unity-canvas {
         width: 100%;
         height: 100%;
+        max-width: 100%;
+        max-height: 100%;
         object-fit: contain;
-        z-index: 1; /* Asegurar que el canvas tenga un z-index bajo */
+        z-index: 1;
       }
       #unity-loading-bar {
         position: absolute;
@@ -77,11 +81,51 @@
         border-radius: 5px;
         cursor: pointer;
         font-size: 16px;
-        z-index: 1000; /* z-index muy alto para asegurar que esté por encima */
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); /* Sombra para mejor visibilidad */
+        z-index: 1000;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
       }
       #exit-button:hover {
         background-color: #cc0000;
+      }
+      #coppercoin-counter {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #ffd700;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 16px;
+        z-index: 1000;
+      }
+      #mining-timer {
+        position: absolute;
+        top: 40px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #ff4444;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 16px;
+        z-index: 1000;
+        display: none;
+      }
+      #collect-button {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        background-color: #ffa500;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        z-index: 1000;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      }
+      #collect-button:hover {
+        background-color: #cc8400;
       }
     </style>
   </head>
@@ -89,6 +133,9 @@
     <div id="unity-container" class="unity-desktop">
       <canvas id="unity-canvas" tabindex="-1"></canvas>
       <button id="exit-button" onclick="exitGame()">Salir</button>
+      <div id="coppercoin-counter">💰 Coppercoins: 0</div>
+      <div id="mining-timer">⏳ Tiempo para minar: 00:00:00</div>
+      <button id="collect-button" onclick="collectCoin()">Collect Coin</button>
       <div id="unity-loading-bar">
         <div id="unity-logo"></div>
         <div id="unity-progress-bar-empty">
@@ -109,6 +156,45 @@
       var progressBarFull = document.querySelector("#unity-progress-bar-full");
       var fullscreenButton = document.querySelector("#unity-fullscreen-button");
       var warningBanner = document.querySelector("#unity-warning");
+      var coppercoinCounter = document.querySelector("#coppercoin-counter");
+      var miningTimer = document.querySelector("#mining-timer");
+
+      // Verificar si la API de Telegram está disponible
+      if (window.Telegram && window.Telegram.WebApp) {
+        console.log("Telegram WebApp API cargada correctamente.");
+        window.Telegram.WebApp.expand(); // Expandir la Mini App al cargar
+      } else {
+        console.log("Telegram WebApp API no está disponible.");
+      }
+
+      // Ajustar el tamaño del canvas dinámicamente
+      function resizeCanvas() {
+        const aspectRatio = 16 / 9;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        if (window.Telegram && window.Telegram.WebApp) {
+          width = window.Telegram.WebApp.viewportWidth;
+          height = window.Telegram.WebApp.viewportHeight;
+        }
+
+        if (width / height > aspectRatio) {
+          width = height * aspectRatio;
+        } else {
+          height = width / aspectRatio;
+        }
+
+        width = Math.min(width, window.innerWidth);
+        height = Math.min(height, window.innerHeight);
+
+        container.style.width = width + 'px';
+        container.style.height = height + 'px';
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
 
       function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
@@ -136,6 +222,92 @@
         }
       }
 
+      // Obtener parámetros de la URL
+      const urlParams = new URLSearchParams(window.location.search);
+      let coppercoins = parseInt(urlParams.get('coppercoins')) || 0;
+      const level = parseInt(urlParams.get('level')) || 1;
+
+      // Mostrar las coppercoins
+      coppercoinCounter.textContent = `💰 Coppercoins: ${coppercoins}`;
+
+      // Calcular el máximo de coppercoins según el nivel
+      const maxCoppercoinsPerDay = {
+        1: 50,
+        2: 100,
+        3: 200,
+        4: 400,
+        5: 800
+      };
+      const maxCoppercoins = maxCoppercoinsPerDay[level] || 50;
+
+      function collectCoin() {
+        if (coppercoins >= maxCoppercoins) {
+          alert("Has alcanzado el máximo de coppercoins que puedes recolectar hoy. Vuelve mañana.");
+          return;
+        }
+
+        // Enviar datos al bot
+        if (window.Telegram && window.Telegram.WebApp) {
+          const data = { action: "collect_coin", amount: 1 };
+          window.Telegram.WebApp.sendData(JSON.stringify(data));
+          coppercoins += 1;
+          coppercoinCounter.textContent = `💰 Coppercoins: ${coppercoins}`;
+
+          if (coppercoins >= maxCoppercoins) {
+            miningTimer.style.display = 'block';
+            const now = new Date();
+            const nextDay = new Date(now);
+            nextDay.setHours(0, 0, 0, 0);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const timeLeft = nextDay - now;
+
+            function updateTimer() {
+              const now = new Date();
+              const timeLeft = nextDay - now;
+              if (timeLeft <= 0) {
+                miningTimer.style.display = 'none';
+                return;
+              }
+              const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+              const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+              const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+              miningTimer.textContent = `⏳ Tiempo para minar: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+              setTimeout(updateTimer, 1000);
+            }
+
+            updateTimer();
+          }
+        } else {
+          alert("No se puede recolectar monedas. La API de Telegram no está disponible.");
+        }
+      }
+
+      // Mostrar temporizador si se alcanzó el máximo al cargar
+      if (coppercoins >= maxCoppercoins) {
+        miningTimer.style.display = 'block';
+        const now = new Date();
+        const nextDay = new Date(now);
+        nextDay.setHours(0, 0, 0, 0);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const timeLeft = nextDay - now;
+
+        function updateTimer() {
+          const now = new Date();
+          const timeLeft = nextDay - now;
+          if (timeLeft <= 0) {
+            miningTimer.style.display = 'none';
+            return;
+          }
+          const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+          const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+          miningTimer.textContent = `⏳ Tiempo para minar: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+          setTimeout(updateTimer, 1000);
+        }
+
+        updateTimer();
+      }
+
       var buildUrl = "/CopperCoin/build/";
       var loaderUrl = buildUrl + "CopperCoin_WebGL_Build.loader.js";
       var config = {
@@ -161,22 +333,4 @@
 
       loadingBar.style.display = "block";
 
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          progressBarFull.style.width = 100 * progress + "%";
-        }).then((unityInstance) => {
-          loadingBar.style.display = "none";
-          fullscreenButton.onclick = () => {
-            unityInstance.SetFullscreen(1);
-          };
-        }).catch((message) => {
-          alert(message);
-        });
-      };
-
-      document.body.appendChild(script);
-    </script>
-  </body>
-</html>
+      var script =
