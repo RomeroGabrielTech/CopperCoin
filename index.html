@@ -19,6 +19,19 @@
         justify-content: center;
         align-items: center;
       }
+      #audio-message {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-family: Arial, sans-serif;
+        font-size: 16px;
+        z-index: 1000;
+      }
     </style>
   </head>
   <body>
@@ -36,6 +49,7 @@
         <div id="unity-fullscreen-button"></div>
         <div id="unity-build-title">CopperCoin</div>
       </div>
+      <div id="audio-message">Click "Collect Coin" to enable audio</div>
     </div>
     <script>
       var container = document.querySelector("#unity-container");
@@ -44,6 +58,7 @@
       var progressBarFull = document.querySelector("#unity-progress-bar-full");
       var fullscreenButton = document.querySelector("#unity-fullscreen-button");
       var warningBanner = document.querySelector("#unity-warning");
+      var audioMessage = document.querySelector("#audio-message");
 
       function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
@@ -63,7 +78,7 @@
         updateBannerVisibility();
       }
 
-      var buildUrl = "/CopperCoin/"; // Archivos están en la raíz
+      var buildUrl = "/CopperCoin/"; // Ruta absoluta desde la raíz del sitio
       var loaderUrl = buildUrl + "CopperCoin_WebGL_Build.loader.js";
       var config = {
         dataUrl: buildUrl + "CopperCoin_WebGL_Build.data",
@@ -75,6 +90,9 @@
         productVersion: "1.0",
         showBanner: unityShowBanner,
       };
+
+      // Habilitar sincronización automática de persistentDataPath
+      config.autoSyncPersistentDataPath = true;
 
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         var meta = document.createElement('meta');
@@ -100,6 +118,10 @@
           fullscreenButton.onclick = () => {
             unityInstance.SetFullscreen(1);
           };
+          // Ocultar el mensaje de audio después de la primera interacción
+          canvas.addEventListener('click', () => {
+            audioMessage.style.display = 'none';
+          });
         }).catch((message) => {
           alert(message);
         });
