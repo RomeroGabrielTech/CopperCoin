@@ -1,286 +1,146 @@
-import os
-import json
-import datetime
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InputFile, WebAppInfo
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from dotenv import load_dotenv
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | CopperCoin</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+      canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      #unity-container {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column; /* Apilar elementos verticalmente */
+        justify-content: center;
+        align-items: center;
+      }
+      #unity-footer {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px; /* Espacio entre el canvas y el footer */
+      }
+      #audio-message {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-family: Arial, sans-serif;
+        font-size: 16px;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="unity-container" class="unity-desktop">
+      <canvas id="unity-canvas" width=1080 height=1920 tabindex="-1"></canvas>
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
+        </div>
+      </div>
+      <div id="unity-warning"> </div>
+      <div id="unity-footer">
+        <div id="unity-webgl-logo"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title">CopperCoin</div>
+      </div>
+      <div id="audio-message" style="display: none;">Click "Collect Coin" to enable audio</div>
+    </div>
+    <script>
+      var container = document.querySelector("#unity-container");
+      var canvas = document.querySelector("#unity-canvas");
+      var loadingBar = document.querySelector("#unity-loading-bar");
+      var progressBarFull = document.querySelector("#unity-progress-bar-full");
+      var fullscreenButton = document.querySelector("#unity-fullscreen-button");
+      var warningBanner = document.querySelector("#unity-warning");
+      var audioMessage = document.querySelector("#audio-message");
 
-# Cargar las variables de entorno desde el archivo .env
-load_dotenv()
-
-# Obtener el token y las credenciales de usuario desde las variables de entorno
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-AUTH_USERS = os.getenv("AUTH_USERS")
-
-if not TOKEN:
-    raise ValueError("La variable de entorno TELEGRAM_BOT_TOKEN no está configurada.")
-
-# Convertir las credenciales de usuario en un diccionario
-auth_users = dict(item.split(":") for item in AUTH_USERS.split(","))
-
-# URL del juego CopperCoin
-GAME_URL = "https://romerogabrieltech.github.io/CopperCoin"
-
-# Datos del juego
-MAX_COPPERCOINS_PER_DAY = {
-    1: 50,  # Nivel 1: Máximo de 50 coppercoins por día
-    2: 100, # Nivel 2: Máximo de 100 coppercoins por día
-    3: 200, # Nivel 3: Máximo de 200 coppercoins por día
-    4: 400, # Nivel 4: Máximo de 400 coppercoins por día
-    5: 800  # Nivel 5: Máximo de 800 coppercoins por día
-}
-
-# Cargar datos de jugadores desde un archivo JSON
-def load_player_data():
-    if os.path.exists("player_data.json"):
-        with open("player_data.json", "r") as file:
-            return json.load(file)
-    return {}
-
-# Guardar datos de jugadores en un archivo JSON
-def save_player_data(data):
-    with open("player_data.json", "w") as file:
-        json.dump(data, file)
-
-player_data = load_player_data()
-
-# Estado de los usuarios para el flujo de autenticación
-user_state = {}
-
-# Verificar si la sesión del usuario sigue activa
-def is_session_active(user_data):
-    if not user_data.get("logged_in"):
-        return False
-    session_expiry = user_data.get("session_expiry")
-    if not session_expiry:
-        return False
-    expiry_time = datetime.datetime.fromisoformat(session_expiry)
-    return datetime.datetime.now() < expiry_time
-
-# Función de inicio
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    if user_id not in player_data:
-        player_data[user_id] = {
-            "level": 1,
-            "coppercoins": 0,
-            "last_mine_time": datetime.datetime.min.strftime('%Y-%m-%d'),
-            "logged_in": False,
-            "session_expiry": None
+      function unityShowBanner(msg, type) {
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
         }
-        save_player_data(player_data)
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function() {
+            warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
+      }
 
-    # Verificar si la sesión sigue activa
-    user_data = player_data[user_id]
-    if is_session_active(user_data):
-        start_button_text = "Jugar CopperCoin"
-        start_button_web_app = WebAppInfo(url=GAME_URL)
-        start_button_callback = None
-    else:
-        start_button_text = "Iniciar sesión"
-        start_button_web_app = None
-        start_button_callback = "start_login"
+      var buildUrl = "/CopperCoin/build/"; // Archivos están en la carpeta build
+      var loaderUrl = buildUrl + "CopperCoin_WebGL_Build.loader.js";
+      var config = {
+        dataUrl: buildUrl + "CopperCoin_WebGL_Build.data",
+        frameworkUrl: buildUrl + "CopperCoin_WebGL_Build.framework.js",
+        codeUrl: buildUrl + "CopperCoin_WebGL_Build.wasm",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "DefaultCompany",
+        productName: "CopperCoin",
+        productVersion: "1.0",
+        showBanner: unityShowBanner,
+      };
 
-    # Ruta de la imagen
-    image_path = "GameInit.jpg"
+      // Habilitar sincronización automática de persistentDataPath
+      config.autoSyncPersistentDataPath = true;
 
-    try:
-        with open(image_path, "rb") as file:
-            await context.bot.send_photo(
-                chat_id=update.effective_chat.id,
-                photo=InputFile(file),
-                caption="¡Bienvenido a CopperCoin!\n\n"
-                        "Debes iniciar sesión para jugar.\n"
-                        "Haz clic en 'Iniciar sesión' o usa el comando:\n"
-                        "Ejemplo: /login player1 password123",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(start_button_text, web_app=start_button_web_app, callback_data=start_button_callback)],
-                    [InlineKeyboardButton("Invita a un amigo", url="https://www.tu-enlace-invitacion.com")],
-                    [InlineKeyboardButton("FAQ", url="https://www.tu-enlace-faq.com")]
-                ])
-            )
-    except FileNotFoundError:
-        await update.message.reply_text(
-            "¡Bienvenido a CopperCoin!\n\n"
-            "Debes iniciar sesión para jugar.\n"
-            "Haz clic en 'Iniciar sesión' o usa el comando:\n"
-            "Ejemplo: /login player1 password123",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(start_button_text, web_app=start_button_web_app, callback_data=start_button_callback)],
-                [InlineKeyboardButton("Invita a un amigo", url="https://www.tu-enlace-invitacion.com")],
-                [InlineKeyboardButton("FAQ", url="https://www.tu-enlace-faq.com")]
-            ])
-        )
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        document.getElementsByTagName('head')[0].appendChild(meta);
+        container.className = "unity-mobile";
+        canvas.className = "unity-mobile";
+      } else {
+        canvas.style.width = "1080px";
+        canvas.style.height = "1920px";
+      }
 
-# Función para iniciar el flujo de login
-async def start_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    user_state[user_id] = {"step": "username"}
-    await query.message.reply_text("Por favor, ingresa tu nombre de usuario:")
+      loadingBar.style.display = "block";
 
-# Función para manejar el flujo de login
-async def handle_login_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    text = update.message.text
+      // Verificar si el usuario ya ha interactuado para mostrar el mensaje de audio
+      if (!localStorage.getItem('audioEnabled')) {
+        audioMessage.style.display = 'block';
+      }
 
-    if user_id in user_state:
-        state = user_state[user_id]
-        if state["step"] == "username":
-            state["username"] = text
-            state["step"] = "password"
-            await update.message.reply_text("Por favor, ingresa tu contraseña:")
-        elif state["step"] == "password":
-            username = state["username"]
-            password = text
-            if auth_users.get(username) == password:
-                # Establecer sesión por 20 minutos
-                expiry_time = datetime.datetime.now() + datetime.timedelta(minutes=20)
-                player_data[user_id]["logged_in"] = True
-                player_data[user_id]["session_expiry"] = expiry_time.isoformat()
-                save_player_data(player_data)
-                await update.message.reply_text(
-                    f"¡Inicio de sesión exitoso, {username}! Haz clic en el botón para jugar CopperCoin:",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("Jugar CopperCoin", web_app=WebAppInfo(url=GAME_URL))],
-                        [InlineKeyboardButton("Minar Coppercoins", callback_data="minar")]
-                    ])
-                )
-            else:
-                await update.message.reply_text("Nombre de usuario o contraseña incorrectos. Intenta de nuevo.")
-                user_state[user_id] = {"step": "username"}
-                await update.message.reply_text("Por favor, ingresa tu nombre de usuario:")
-    else:
-        await update.message.reply_text("Por favor, usa el botón 'Iniciar sesión' o el comando /login para comenzar.")
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = 100 * progress + "%";
+        }).then((unityInstance) => {
+          loadingBar.style.display = "none";
+          fullscreenButton.onclick = () => {
+            unityInstance.SetFullscreen(1);
+          };
+          // Ocultar el mensaje de audio y guardar el estado después de la primera interacción
+          canvas.addEventListener('click', () => {
+            audioMessage.style.display = 'none';
+            localStorage.setItem('audioEnabled', 'true');
+          });
+        }).catch((message) => {
+          alert(message);
+        });
+      };
 
-# Función para manejar el comando /login
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_input = update.message.text.split()
-    if len(user_input) != 3 or user_input[0] != "/login":
-        await update.message.reply_text("Uso: /login <usuario> <contraseña>\nEjemplo: /login player1 password123")
-        return
-
-    username = user_input[1]
-    password = user_input[2]
-
-    if auth_users.get(username) == password:
-        # Establecer sesión por 20 minutos
-        expiry_time = datetime.datetime.now() + datetime.timedelta(minutes=20)
-        player_data[update.effective_user.id]["logged_in"] = True
-        player_data[update.effective_user.id]["session_expiry"] = expiry_time.isoformat()
-        save_player_data(player_data)
-        await update.message.reply_text(
-            f"¡Inicio de sesión exitoso, {username}! Haz clic en el botón para jugar CopperCoin:",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Jugar CopperCoin", web_app=WebAppInfo(url=GAME_URL))],
-                [InlineKeyboardButton("Minar Coppercoins", callback_data="minar")]
-            ])
-        )
-    else:
-        await update.message.reply_text("Nombre de usuario o contraseña incorrectos.")
-
-# Función para manejar el comando /mine
-async def minar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    user_data = player_data.get(user_id)
-    if user_data and is_session_active(user_data):
-        now = datetime.datetime.now()
-        last_mine_date = datetime.datetime.strptime(user_data["last_mine_time"], '%Y-%m-%d')
-        if now.date() > last_mine_date.date():
-            user_data["coppercoins"] = 0  # Reiniciar el conteo diario si ha pasado un día
-            user_data["last_mine_time"] = now.strftime('%Y-%m-%d')
-            save_player_data(player_data)
-
-        max_coppercoins = MAX_COPPERCOINS_PER_DAY[user_data["level"]]
-        if user_data["coppercoins"] < max_coppercoins:
-            user_data["coppercoins"] += 10  # Minerar 10 coppercoins por acción
-            save_player_data(player_data)
-            await update.message.reply_text(f"Has minado 10 coppercoins. Total minado hoy: {user_data['coppercoins']}/{max_coppercoins}.")
-        else:
-            await update.message.reply_text("Has alcanzado el máximo de coppercoins que puedes minar hoy. Vuelve mañana para minar más.")
-    else:
-        await update.message.reply_text("Debes iniciar sesión primero. Usa el botón 'Iniciar sesión' o el comando /login.")
-
-# Función del mercado
-async def mercado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    user_data = player_data.get(user_id)
-    if user_data and is_session_active(user_data):
-        keyboard = [
-            [InlineKeyboardButton("Comprar Cobre", callback_data='comprar')],
-            [InlineKeyboardButton("Vender Cobre", callback_data='vender')],
-            [InlineKeyboardButton("Cambiar Coppercoins", callback_data='cambiar_coppercoins')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Elige una opción:", reply_markup=reply_markup)
-    else:
-        await update.message.reply_text("Debes iniciar sesión primero. Usa el botón 'Iniciar sesión' o el comando /login.")
-
-# Función para manejar botones
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "start_login":
-        user_id = query.from_user.id
-        user_state[user_id] = {"step": "username"}
-        await query.message.reply_text("Por favor, ingresa tu nombre de usuario:")
-    elif query.data == "minar":
-        user_id = query.from_user.id
-        user_data = player_data.get(user_id)
-        if user_data and is_session_active(user_data):
-            now = datetime.datetime.now()
-            last_mine_date = datetime.datetime.strptime(user_data["last_mine_time"], '%Y-%m-%d')
-            if now.date() > last_mine_date.date():
-                user_data["coppercoins"] = 0  # Reiniciar el conteo diario si ha pasado un día
-                user_data["last_mine_time"] = now.strftime('%Y-%m-%d')
-                save_player_data(player_data)
-
-            max_coppercoins = MAX_COPPERCOINS_PER_DAY[user_data["level"]]
-            if user_data["coppercoins"] < max_coppercoins:
-                user_data["coppercoins"] += 10  # Minerar 10 coppercoins por acción
-                save_player_data(player_data)
-                await query.edit_message_text(f"Has minado 10 coppercoins. Total minado hoy: {user_data['coppercoins']}/{max_coppercoins}.")
-            else:
-                await query.edit_message_text("Has alcanzado el máximo de coppercoins que puedes minar hoy. Vuelve mañana para minar más.")
-        else:
-            await query.edit_message_text("Debes iniciar sesión primero. Usa el botón 'Iniciar sesión' o el comando /login.")
-    elif query.data == "comprar":
-        await query.edit_message_text(text="¡Has seleccionado comprar cobre!")
-    elif query.data == "vender":
-        await query.edit_message_text(text="¡Has seleccionado vender cobre!")
-    elif query.data == "cambiar_coppercoins":
-        user_id = query.from_user.id
-        user_data = player_data.get(user_id)
-        if user_data and user_data["coppercoins"] > 0:
-            # Suponiendo que 1 coppercoin equivale a 0.1 moneda de cambio
-            monedas = user_data["coppercoins"] * 0.1
-            user_data["coppercoins"] = 0  # Resetear los coppercoins después del cambio
-            save_player_data(player_data)
-            await query.edit_message_text(f"Has cambiado tus coppercoins por {monedas} monedas.")
-        else:
-            await query.edit_message_text("No tienes suficientes coppercoins para cambiar.")
-
-# Configuración principal
-def main():
-    # Crear la aplicación
-    application = Application.builder().token(TOKEN).build()
-
-    # Agregar comandos
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("login", login))
-    application.add_handler(CommandHandler("mercado", mercado))
-    application.add_handler(CommandHandler("minar", minar))
-
-    # Agregar manejador de botones
-    application.add_handler(CallbackQueryHandler(callback_handler))
-
-    # Agregar manejador para el flujo de login
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_login_flow))
-
-    # Iniciar el bot
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
+      document.body.appendChild(script);
+    </script>
+  </body>
+</html>
