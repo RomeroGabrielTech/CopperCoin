@@ -16,8 +16,15 @@
         width: 100%;
         height: 100vh;
         display: flex;
+        flex-direction: column; /* Apilar elementos verticalmente */
         justify-content: center;
         align-items: center;
+      }
+      #unity-footer {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px; /* Espacio entre el canvas y el footer */
       }
       #audio-message {
         position: absolute;
@@ -49,7 +56,7 @@
         <div id="unity-fullscreen-button"></div>
         <div id="unity-build-title">CopperCoin</div>
       </div>
-      <div id="audio-message">Click "Collect Coin" to enable audio</div>
+      <div id="audio-message" style="display: none;">Click "Collect Coin" to enable audio</div>
     </div>
     <script>
       var container = document.querySelector("#unity-container");
@@ -78,7 +85,7 @@
         updateBannerVisibility();
       }
 
-      var buildUrl = "/CopperCoin/build/"; // Ruta absoluta desde la raíz del sitio
+      var buildUrl = "/CopperCoin/build/"; // Archivos están en la carpeta build
       var loaderUrl = buildUrl + "CopperCoin_WebGL_Build.loader.js";
       var config = {
         dataUrl: buildUrl + "CopperCoin_WebGL_Build.data",
@@ -108,6 +115,11 @@
 
       loadingBar.style.display = "block";
 
+      // Verificar si el usuario ya ha interactuado para mostrar el mensaje de audio
+      if (!localStorage.getItem('audioEnabled')) {
+        audioMessage.style.display = 'block';
+      }
+
       var script = document.createElement("script");
       script.src = loaderUrl;
       script.onload = () => {
@@ -118,9 +130,10 @@
           fullscreenButton.onclick = () => {
             unityInstance.SetFullscreen(1);
           };
-          // Ocultar el mensaje de audio después de la primera interacción
+          // Ocultar el mensaje de audio y guardar el estado después de la primera interacción
           canvas.addEventListener('click', () => {
             audioMessage.style.display = 'none';
+            localStorage.setItem('audioEnabled', 'true');
           });
         }).catch((message) => {
           alert(message);
